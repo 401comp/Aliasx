@@ -1,0 +1,8 @@
+# File Renamer on macOS Catalina (10.15, Intel).
+# Install Python 3.9.13 from python.org, then run ./build.sh on the
+# Catalina machine itself — a PyInstaller bundle only runs on the macOS
+# generation it was built on or newer.
+# Same pins Jack Hammer verified on Catalina.
+Pillow==10.4.0
+pyinstaller==6.10.0
+tkinterdnd2==0.4.2
