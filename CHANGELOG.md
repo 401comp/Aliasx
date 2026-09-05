@@ -7,7 +7,7 @@ First packaged release. Rebuilt from the original single-file
 
 ### Added
 - **Rename history and undo.** Every batch is written to SQLite in
-  `~/Library/Application Support/File Renamer/`, so a rename can be
+  `~/Library/Application Support/Aliasx/`, so a rename can be
   reversed after quitting the app. History tab lists every batch with
   its files; undo works per batch or on the most recent one (⌘Z).
 - **Live preview.** Each file shows its current name beside the name it

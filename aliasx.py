@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""File Renamer — batch renaming for macOS, with a real undo.
+"""Aliasx — batch renaming for macOS, with a real undo.
 
 What it does:
   1. Add files (or whole folders, or drag them in).
@@ -19,15 +19,17 @@ renaming B to A moves everything through temporary names first.
 
 Nothing leaves this Mac — no network access, no telemetry.
 
-  python3 file_renamer.py              # normal launch
-  python3 file_renamer.py --selftest   # headless checks, no window
+  python3 aliasx.py                    # normal launch
+  python3 aliasx.py --selftest         # headless checks, no window
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import queue
+import subprocess
 import sys
 import threading
 import traceback
@@ -37,16 +39,114 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
+import applog
 import database
 import prefs as prefs_module
 import renamer
 
-APP_NAME = "File Renamer"
+APP_NAME = "Aliasx"
 VERSION = "1.0.0"
 try:
     from _build import BUILD          # written by build.sh on every build
 except Exception:
     BUILD = "source"
+
+
+# ---------- plugin loader -----------------------------------------------
+# Core app functionality stays untouched by plugins. A plugin is a single
+# .py file dropped into ~/Library/Application Support/Aliasx/plugins/
+# that exports a `register(app)` function; official plugins arrive via a
+# reviewed PR to the GitHub repo rather than being written ad-hoc.
+
+def _plugins_dir() -> Path:
+    d = database.app_dir() / "plugins"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _plugin_state_path() -> Path:
+    return database.app_dir() / "plugin_state.json"
+
+
+def _load_plugin_state() -> dict:
+    """Maps plugin filename -> enabled bool. Missing entries default enabled."""
+    try:
+        return json.loads(_plugin_state_path().read_text())
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def _save_plugin_state(state: dict) -> None:
+    try:
+        _plugin_state_path().write_text(json.dumps(state, indent=2))
+    except Exception:
+        pass
+
+
+def _scan_plugin_metadata() -> list:
+    """List every .py file in the plugins folder with its name/description/
+    enabled state, WITHOUT importing/executing any of them — safe to call
+    even for plugins the user has disabled. Uses static AST parsing to read
+    top-level PLUGIN_NAME / PLUGIN_DESCRIPTION string assignments."""
+    import ast
+    d = _plugins_dir()
+    state = _load_plugin_state()
+    plugins = []
+    for path in sorted(d.glob("*.py")):
+        if path.name.startswith("_"):
+            continue
+        name = path.stem
+        description = "No description provided."
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"),
+                              filename=path.name)
+            for node in tree.body:
+                if isinstance(node, ast.Assign) and len(node.targets) == 1 \
+                        and isinstance(node.targets[0], ast.Name) \
+                        and isinstance(node.value, ast.Constant) \
+                        and isinstance(node.value.value, str):
+                    if node.targets[0].id == "PLUGIN_NAME":
+                        name = node.value.value
+                    elif node.targets[0].id == "PLUGIN_DESCRIPTION":
+                        description = node.value.value
+        except Exception:
+            pass
+        plugins.append({
+            "fname": path.name, "name": name, "description": description,
+            "enabled": state.get(path.name, True),
+        })
+    return plugins
+
+
+def load_plugins(app) -> list:
+    """Discover and register enabled plugins. Plugins the user has disabled
+    (via Plugins -> Manage Plugins...) are skipped entirely — never
+    imported, so their code never runs."""
+    import importlib.util
+    d = _plugins_dir()
+    state = _load_plugin_state()
+    loaded = []
+    prev_dont_write = sys.dont_write_bytecode
+    sys.dont_write_bytecode = True
+    try:
+        for path in sorted(d.glob("*.py")):
+            if path.name.startswith("_"):
+                continue
+            if not state.get(path.name, True):
+                continue  # disabled — skip entirely, no import
+            try:
+                spec = importlib.util.spec_from_file_location(
+                    f"aliasx_plugin_{path.stem}", path)
+                mod = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(mod)
+                if hasattr(mod, "register") and callable(mod.register):
+                    mod.register(app)
+                    loaded.append(getattr(mod, "PLUGIN_NAME", path.stem))
+            except Exception as e:
+                applog.error(f"[{APP_NAME}] plugin {path.name} failed: {e}")
+    finally:
+        sys.dont_write_bytecode = prev_dont_write
+    return loaded
 
 # Drag-and-drop is a bonus, not a requirement — the app runs fine without
 # tkinterdnd2 installed (and it is absent from a plain `python3` run).
@@ -57,6 +157,11 @@ except Exception:
     DND_FILES = None
     TkinterDnD = None
     HAS_DND = False
+
+# Whether the tkdnd Tcl package actually loaded for this Tcl build/arch. The
+# import above can succeed while the native library is missing (e.g. Intel
+# macOS on Tcl 9 ships no matching tkdnd binary). Set by make_root().
+DND_OK = False
 
 MODE_LABELS = (
     (renamer.MODE_RANDOM, "Random names  (a7Kd93Xb)"),
@@ -144,13 +249,24 @@ class RenamerApp:
         self._build_style()
         self._build_vars()
         self._build_menu()
+        load_plugins(self)
         self._build_layout()
         self._restore_geometry()
         self._enable_dnd()
 
         root.protocol("WM_DELETE_WINDOW", self.on_close)
+        root.report_callback_exception = self._on_callback_exception
+        applog.info("%s %s (build %s) started." % (APP_NAME, VERSION, BUILD))
         self.refresh_history()
         self.refresh_preview()
+
+    # Tk's default report_callback_exception just prints to stderr, which is
+    # invisible once this is a packaged .app — nothing is left to diagnose a
+    # bug that wasn't already wrapped in an explicit try/except.
+    def _on_callback_exception(self, exc_type, exc_value, exc_tb):
+        applog.exception("Unhandled error in a UI callback")
+        self.warn("Something went wrong", "An unexpected error occurred:\n%s\n\n"
+                  "See Help → View Log for details." % exc_value)
 
     # ----------------------------------------------------------- chrome
 
@@ -209,14 +325,91 @@ class RenamerApp:
         file_menu.add_command(label="Clear List", command=self.clear_list)
         menubar.add_cascade(label="File", menu=file_menu)
 
+        plugins_menu = tk.Menu(menubar, tearoff=0)
+        plugins_menu.add_command(label="Manage Plugins…", command=self._open_plugin_manager)
+        plugins_menu.add_command(label="Open Plugins Folder…", command=self._open_plugins_folder)
+        menubar.add_cascade(label="Plugins", menu=plugins_menu)
+
         help_menu = tk.Menu(menubar, tearoff=0)
         help_menu.add_command(label="About %s" % APP_NAME,
                               command=self.show_about)
         help_menu.add_command(label="Where things are stored",
                               command=self.show_storage)
+        help_menu.add_separator()
+        help_menu.add_command(label="View Log in Console...",
+                              command=self._open_log_console)
+        help_menu.add_command(label="Reveal Log in Finder",
+                              command=self._reveal_log)
         menubar.add_cascade(label="Help", menu=help_menu)
 
         self.root.config(menu=menubar)
+
+    def _open_plugins_folder(self):
+        subprocess.run(["open", str(_plugins_dir())], check=False)
+
+    def _open_plugin_manager(self):
+        win = tk.Toplevel(self.root)
+        win.title("Manage Plugins")
+        win.geometry("480x380")
+        win.minsize(420, 260)
+        win.transient(self.root)
+
+        ttk.Label(win, text="Installed Plugins", font=('Helvetica', 14, 'bold'),
+                  padding=(14, 12, 14, 4)).pack(anchor='w')
+
+        plugins = _scan_plugin_metadata()
+        list_frame = ttk.Frame(win, padding=(14, 0, 14, 0))
+        list_frame.pack(fill='both', expand=True)
+
+        restart_note = ttk.Label(win, text="", foreground='#c07a00',
+                                  padding=(14, 4))
+        restart_note.pack(fill='x')
+
+        if not plugins:
+            ttk.Label(list_frame,
+                      text="No plugins installed.\n\nOfficial plugins ship "
+                           f"through the {APP_NAME} GitHub repo — install a "
+                           "released one by dropping its file into the "
+                           "plugins folder.",
+                      foreground='#888', justify='center',
+                      wraplength=380).pack(expand=True, pady=40)
+        else:
+            for meta in plugins:
+                row = ttk.Frame(list_frame, padding=(0, 8))
+                row.pack(fill='x')
+                top = ttk.Frame(row)
+                top.pack(fill='x')
+                ttk.Label(top, text=meta['name'],
+                          font=('Helvetica', 12, 'bold')).pack(side='left')
+                toggle_btn = tk.Label(top, width=3, font=('Helvetica', 12, 'bold'),
+                                       relief='flat', cursor='pointinghand')
+                toggle_btn.pack(side='right')
+                ttk.Label(row, text=meta['description'], foreground='#888',
+                          wraplength=420, justify='left').pack(anchor='w', pady=(2, 0))
+                ttk.Separator(list_frame, orient='horizontal').pack(fill='x', pady=(4, 0))
+
+                def refresh_toggle(btn=toggle_btn, m=meta):
+                    if m['enabled']:
+                        btn.config(text='✓', fg='white', bg='#4CAF50')
+                    else:
+                        btn.config(text='✗', fg='white', bg='#e57373')
+
+                def on_toggle(event=None, btn=toggle_btn, m=meta):
+                    m['enabled'] = not m['enabled']
+                    state = _load_plugin_state()
+                    state[m['fname']] = m['enabled']
+                    _save_plugin_state(state)
+                    refresh_toggle(btn, m)
+                    restart_note.config(text=f"Restart {APP_NAME} for changes to take effect.")
+
+                toggle_btn.bind('<Button-1>', on_toggle)
+                refresh_toggle()
+
+        btn_row = ttk.Frame(win, padding=12)
+        btn_row.pack(fill='x')
+        ttk.Button(btn_row, text="Open Plugins Folder…",
+                   command=self._open_plugins_folder).pack(side='left')
+        ttk.Button(btn_row, text="Close", command=win.destroy).pack(side='right')
         self.root.bind_all("<Command-o>", lambda _e: self.add_files())
         self.root.bind_all("<Command-O>", lambda _e: self.add_folder())
         self.root.bind_all("<Command-r>", lambda _e: self.do_rename())
@@ -257,7 +450,7 @@ class RenamerApp:
         ttk.Button(bar, text="Clear List",
                    command=self.clear_list).pack(side="left", padx=(6, 0))
         hint = ("Drag files here, or use Add Files."
-                if HAS_DND else "Use Add Files or Add Folder.")
+                if DND_OK else "Use Add Files or Add Folder.")
         ttk.Label(bar, text=hint, style="Muted.TLabel").pack(side="right")
 
         table = ttk.Frame(tab)
@@ -486,7 +679,7 @@ class RenamerApp:
         self.refresh_preview()
 
     def _enable_dnd(self):
-        if not HAS_DND:
+        if not DND_OK:
             return
         try:
             self.tree.drop_target_register(DND_FILES)
@@ -695,6 +888,7 @@ class RenamerApp:
             try:
                 self.jobs.put(work(progress, cancelled))
             except Exception:
+                applog.exception("Job crashed")
                 self.jobs.put(("crash", traceback.format_exc(), None))
 
         threading.Thread(target=runner, daemon=True).start()
@@ -727,7 +921,7 @@ class RenamerApp:
 
         if kind == "crash":
             self.warn("Something went wrong",
-                      "File Renamer hit an unexpected problem and stopped "
+                      "Aliasx hit an unexpected problem and stopped "
                       "before finishing. No further files were changed.\n\n"
                       "Details:\n%s" % message[1].strip().splitlines()[-1])
             self.refresh_preview()
@@ -872,6 +1066,7 @@ class RenamerApp:
 
     @staticmethod
     def _store_error(err):
+        applog.exception("Rename history read/write failed")
         return ("The rename history could not be read or written. It lives "
                 "in %s — check that folder is available and not full.\n\n"
                 "(%s)" % (database.app_dir(), err))
@@ -892,12 +1087,22 @@ class RenamerApp:
     def show_storage(self):
         messagebox.showinfo(
             APP_NAME,
-            "File Renamer keeps two files, both in:\n\n%s\n\n"
-            "• file_renamer.sqlite3 — the rename history that Undo uses\n"
+            "Aliasx keeps two files, both in:\n\n%s\n\n"
+            "• aliasx.sqlite3 — the rename history that Undo uses\n"
             "• prefs.json — window size and your last settings\n\n"
             "Delete that folder to reset the app completely. Your renamed "
             "files are not affected."
             % database.app_dir(), parent=self.root)
+
+    def _open_log_console(self):
+        ok, msg = applog.open_in_console()
+        if not ok:
+            messagebox.showerror(APP_NAME, msg, parent=self.root)
+
+    def _reveal_log(self):
+        ok, msg = applog.reveal_in_finder()
+        if not ok:
+            messagebox.showerror(APP_NAME, msg, parent=self.root)
 
     # -------------------------------------------------------- lifecycle
 
@@ -949,38 +1154,52 @@ class RenamerApp:
 # ----------------------------------------------------------------- entry
 
 def make_root():
-    """Tk root, with drag-and-drop support when tkinterdnd2 is present."""
+    """One Tk root, with drag-and-drop only when tkdnd loads for this Tcl
+    build and CPU architecture.
+
+    tkinterdnd2 monkeypatches drop_target_register/dnd_bind onto every tkinter
+    widget at import; its `TkinterDnD.Tk()` exists only to `package require
+    tkdnd` from __init__. But it creates the Tk window *before* that require, so
+    where no matching tkdnd binary ships (e.g. Intel macOS on Tcl 9 — only an
+    8.x build is bundled) it raises with an orphan root already on screen. That
+    orphan is the stray "tk" window; destroying it dangles a showRootWindow
+    idle handler that segfaults Tk 9 on the next update(). So we build a plain
+    root and load tkdnd onto it ourselves — DnD just stays off when it can't
+    load, with no orphan, no crash, and no second window.
+    """
+    global DND_OK
+    root = tk.Tk()
     if HAS_DND:
         try:
-            return TkinterDnD.Tk()
+            TkinterDnD._require(root)   # loads tkdnd into this interpreter
+            DND_OK = True
         except Exception:
-            pass
-    return tk.Tk()
+            DND_OK = False              # no compatible tkdnd → DnD disabled
+    return root
 
 
 def run_gui() -> int:
+    # One Tk root for the whole app — no throwaway root that would flash a
+    # stray "tk" window next to the real one.
+    root = make_root()
     try:
         database.init_db()
     except Exception as err:
-        # No history means no undo — say so plainly rather than dying.
-        root = tk.Tk()
-        root.withdraw()
-        messagebox.showwarning(
-            APP_NAME,
-            "File Renamer could not open its history file in\n%s\n\n"
-            "The app will still rename files, but Undo will not be "
-            "available until that folder can be written to.\n\n(%s)"
-            % (database.app_dir(), err))
-        root.destroy()
-
-    root = make_root()
+        # No history means no undo — say so plainly rather than dying. Defer
+        # the dialog into the running event loop: showing it on a not-yet-mapped
+        # root can segfault Tk 9 (showRootWindow).
+        msg = ("Aliasx could not open its history file in\n%s\n\n"
+               "The app will still rename files, but Undo will not be "
+               "available until that folder can be written to.\n\n(%s)"
+               % (database.app_dir(), err))
+        root.after(300, lambda: messagebox.showwarning(APP_NAME, msg, parent=root))
     RenamerApp(root)
     root.mainloop()
     return 0
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(prog="file-renamer",
+    parser = argparse.ArgumentParser(prog="aliasx",
                                      description="Batch file renamer for macOS.")
     parser.add_argument("--selftest", action="store_true",
                         help="run the built-in checks and exit (no window)")

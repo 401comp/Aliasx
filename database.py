@@ -1,7 +1,7 @@
-"""SQLite history for File Renamer — the record that makes Undo possible.
+"""SQLite history for Aliasx — the record that makes Undo possible.
 
 Every rename is written down as a batch plus one row per file, so a run
-can be reversed hours or days later. Set FILE_RENAMER_HOME to point the
+can be reversed hours or days later. Set ALIASX_HOME to point the
 store somewhere else (the self-test uses a temporary folder).
 """
 
@@ -15,18 +15,18 @@ from pathlib import Path
 from typing import List, Optional
 
 
-APP_NAME = "File Renamer"
+APP_NAME = "Aliasx"
 
 
 def app_dir() -> Path:
-    override = os.environ.get("FILE_RENAMER_HOME")
+    override = os.environ.get("ALIASX_HOME")
     if override:
         return Path(override)
     return Path.home() / "Library" / "Application Support" / APP_NAME
 
 
 def db_path() -> Path:
-    return app_dir() / "file_renamer.sqlite3"
+    return app_dir() / "aliasx.sqlite3"
 
 
 SCHEMA = """

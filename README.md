@@ -1,4 +1,4 @@
-# File Renamer
+# Aliasx
 
 Batch file renaming for macOS, with an undo that actually survives
 quitting the app.
@@ -77,14 +77,27 @@ files left to restore.
 
 ## Storage
 
-Two files, both in `~/Library/Application Support/File Renamer/`:
+Two files, both in `~/Library/Application Support/Aliasx/`:
 
-- `file_renamer.sqlite3` — the rename history that Undo reads
+- `aliasx.sqlite3` — the rename history that Undo reads
 - `prefs.json` — window size/position and your last settings
 
 Delete that folder to reset the app completely; your files are not
 affected. **Help → Where things are stored** says the same thing inside
 the app.
+
+## Plugins
+
+Aliasx supports drop-in plugins without touching core functionality.
+A plugin is a single `.py` file placed in
+`~/Library/Application Support/Aliasx/plugins/` that exports a
+`register(app)` function; it loads automatically the next time you launch.
+
+**Plugins → Manage Plugins…** lists every installed plugin with a
+description and an enable/disable toggle. Disabling a plugin persists
+immediately and takes effect on the next launch — its code is never even
+imported while disabled. Official plugins ship through pull requests to
+this repo rather than being written ad-hoc.
 
 ## Run it
 
@@ -95,7 +108,7 @@ the app.
 or from the repo:
 
 ```bash
-python3 file_renamer.py
+python3 aliasx.py
 ```
 
 Keyboard: ⌘O add files, ⌘⇧O add folder, ⌘R rename, ⌘Z undo.
@@ -106,7 +119,7 @@ Keyboard: ⌘O add files, ⌘⇧O add folder, ⌘R rename, ⌘Z undo.
 chmod +x build.sh && ./build.sh
 ```
 
-Produces `dist/File Renamer.app` and `release/File-Renamer-1.0.0.dmg`
+Produces `dist/Aliasx.app` and `release/Aliasx-1.0.0.dmg`
 (drag-install, with an `/Applications` shortcut). The build runs the
 compatibility check, the self-test, and a portability check before it
 packages anything, and it never launches the app.
@@ -137,7 +150,7 @@ same, minus the drop target.
 ## Self-test
 
 ```bash
-python3 selftest.py          # or: python3 file_renamer.py --selftest
+python3 selftest.py          # or: python3 aliasx.py --selftest
 ```
 
 51 checks covering name generation, collision avoidance, the overwrite
@@ -150,7 +163,7 @@ anything if it fails.
 
 | File | Purpose |
 |---|---|
-| `file_renamer.py` | Tk UI, menus, preview, history tab, job runner |
+| `aliasx.py` | Tk UI, menus, preview, history tab, job runner |
 | `renamer.py` | The engine — planning, collision rules, safe execution |
 | `database.py` | SQLite history that makes undo possible |
 | `prefs.py` | `prefs.json` for window state and last-used settings |

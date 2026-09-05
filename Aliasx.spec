@@ -9,7 +9,7 @@ datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
 
 a = Analysis(
-    ['file_renamer.py'],
+    ['aliasx.py'],
     pathex=[],
     binaries=binaries,
     datas=datas,
@@ -28,7 +28,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='File Renamer',
+    name='Aliasx',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -48,11 +48,11 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='File Renamer',
+    name='Aliasx',
 )
 app = BUNDLE(
     coll,
-    name='File Renamer.app',
+    name='Aliasx.app',
     icon='assets/icon.icns',
-    bundle_identifier='com.killpidone.filerenamer',
+    bundle_identifier='com.killpidone.aliasx',
 )

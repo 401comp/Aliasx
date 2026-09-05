@@ -15,7 +15,7 @@ import ast
 import sys
 from pathlib import Path
 
-SOURCES = ("file_renamer.py", "renamer.py", "database.py", "prefs.py",
+SOURCES = ("aliasx.py", "renamer.py", "database.py", "prefs.py",
            "selftest.py", "compat_check.py", "assets/make_icon.py")
 
 

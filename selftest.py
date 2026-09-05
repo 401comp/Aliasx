@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""File Renamer self-test — headless, no window, no user files touched.
+"""Aliasx self-test — headless, no window, no user files touched.
 
 Everything runs inside a temporary folder, with the app's storage
-redirected there too (FILE_RENAMER_HOME), so running this never disturbs
+redirected there too (ALIASX_HOME), so running this never disturbs
 the real history or preferences.
 
     python3 selftest.py
-    python3 file_renamer.py --selftest
+    python3 aliasx.py --selftest
 """
 
 from __future__ import annotations
@@ -186,7 +186,7 @@ def test_execution(c, renamer, tmp):
             outcome.ok and first.read_text() == "BBB"
             and second.read_text() == "AAA", str(outcome.failures))
     c.check("no temporary files are left behind",
-            not list(swap.glob(".filerenamer-*")))
+            not list(swap.glob(".aliasx-*")))
 
     # A file that disappeared between preview and rename.
     ghost = tmp / "ghost"
@@ -297,16 +297,16 @@ def test_prefs(c, prefs) -> None:
 
 def run() -> bool:
     c = Checker()
-    with tempfile.TemporaryDirectory(prefix="file-renamer-selftest-") as raw:
+    with tempfile.TemporaryDirectory(prefix="aliasx-selftest-") as raw:
         tmp = Path(raw)
-        os.environ["FILE_RENAMER_HOME"] = str(tmp / "support")
+        os.environ["ALIASX_HOME"] = str(tmp / "support")
 
         sys.path.insert(0, str(Path(__file__).resolve().parent))
         import database
         import prefs
         import renamer
 
-        print("File Renamer self-test — %s\n" % tmp)
+        print("Aliasx self-test — %s\n" % tmp)
         test_names(c, renamer)
         test_plans(c, renamer, tmp)
         test_execution(c, renamer, tmp)

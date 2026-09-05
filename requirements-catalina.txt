@@ -1,4 +1,4 @@
-# File Renamer on macOS Catalina (10.15, Intel).
+# Aliasx on macOS Catalina (10.15, Intel).
 # Install Python 3.9.13 from python.org, then run ./build.sh on the
 # Catalina machine itself — a PyInstaller bundle only runs on the macOS
 # generation it was built on or newer.

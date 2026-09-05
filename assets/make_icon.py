@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the File Renamer app icon (icon.icns) with PIL + iconutil.
+"""Generate the Aliasx app icon (icon.icns) with PIL + iconutil.
 
 Design: a document whose name bar is highlighted, wrapped by a bold
 rename arrow. Shapes only — no fonts — so it renders identically on any

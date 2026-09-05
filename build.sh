@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build File Renamer.app and a drag-install DMG.
+# Build Aliasx.app and a drag-install DMG.
 #   chmod +x build.sh && ./build.sh
 #
 # A PyInstaller bundle runs on the macOS generation it was built on and
@@ -9,33 +9,59 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-APP="File Renamer"
+APP="Aliasx"
 VERSION="1.0.0"
-BUNDLE_ID="com.killpidone.filerenamer"
+BUNDLE_ID="com.killpidone.aliasx"
 PY="venv/bin/python"
+
+# Find a usable non-conda Python 3.9+. Prefer python.org framework installer
+# (always includes _tkinter), fall back to Homebrew if present, then PATH.
+# Reject conda: its libffi/tcl/tk are @rpath-linked and py2app/PyInstaller
+# can't bundle them, so the built app crashes on launch.
+find_python() {
+  local cand real want_v="${1:-}"
+  # python.org framework installer
+  for v in ${want_v:-3.14 3.13 3.12 3.11 3.10 3.9}; do
+    cand="/Library/Frameworks/Python.framework/Versions/$v/bin/python$v"
+    [ -x "$cand" ] && echo "$cand" && return 0
+  done
+  # Homebrew (optional)
+  for v in ${want_v:-3.14 3.13 3.12 3.11 3.10}; do
+    cand="/usr/local/opt/python@$v/bin/python$v"
+    [ -x "$cand" ] && echo "$cand" && return 0
+    cand="/opt/homebrew/opt/python@$v/bin/python$v"
+    [ -x "$cand" ] && echo "$cand" && return 0
+  done
+  # PATH — accept only if it isn't conda
+  if command -v python3 >/dev/null 2>&1; then
+    cand=$(command -v python3)
+    real=$("$cand" -c 'import sys; print(sys.executable)' 2>/dev/null || echo "")
+    if ! echo "$real" | grep -qiE 'conda|miniconda|anaconda'; then
+      echo "$cand" && return 0
+    fi
+  fi
+  return 1
+}
 
 MACOS_VER=$(sw_vers -productVersion)
 case "$MACOS_VER" in
   10.*) REQS="requirements-catalina.txt"
         echo "==> Catalina build ($MACOS_VER) using $REQS"
-        if ! python3 -c 'import sys; sys.exit(0 if sys.version_info[:2] == (3, 9) else 1)'; then
+        BOOTSTRAP=$(find_python 3.9) || {
           echo "ERROR: on Catalina, install Python 3.9.13 from python.org"
-          echo "       (found: $(python3 --version 2>&1))"
           exit 1
-        fi
-        BOOTSTRAP="python3" ;;
+        } ;;
   *)    REQS="requirements.txt"
         echo "==> modern macOS build ($MACOS_VER) using $REQS"
         echo "    note: this .app will NOT run on Catalina — build there for that"
-        # Homebrew python + python-tk, never the miniconda python3 on PATH.
-        if [ -x /usr/local/opt/python@3.14/bin/python3 ]; then
-          BOOTSTRAP="/usr/local/opt/python@3.14/bin/python3"
-        elif [ -x /opt/homebrew/opt/python@3.14/bin/python3 ]; then
-          BOOTSTRAP="/opt/homebrew/opt/python@3.14/bin/python3"
-        else
-          BOOTSTRAP="python3"
-        fi ;;
+        BOOTSTRAP=$(find_python) || {
+          echo "ERROR: no usable Python 3.9+ found."
+          echo "       Install python.org 3.12 (https://www.python.org/downloads/macos/)"
+          echo "       or Homebrew python@3.14."
+          exit 1
+        } ;;
 esac
+echo "    using $BOOTSTRAP ($($BOOTSTRAP --version))"
 
 echo "==> venv + dependencies (via $BOOTSTRAP)"
 # A venv built by a different Python is unusable — recreate it.
@@ -77,7 +103,7 @@ $PY -m PyInstaller --noconfirm --windowed --name "$APP" \
   --osx-bundle-identifier "$BUNDLE_ID" \
   --collect-all tkinterdnd2 \
   --hidden-import _build \
-  file_renamer.py
+  aliasx.py
 
 PLIST="dist/$APP.app/Contents/Info.plist"
 echo "==> Info.plist"
@@ -105,7 +131,7 @@ fi
 
 echo "==> DMG"
 mkdir -p release
-DMG="release/File-Renamer-$VERSION.dmg"
+DMG="release/Aliasx-$VERSION.dmg"
 rm -f "$DMG"
 STAGE=$(mktemp -d)
 cp -R "dist/$APP.app" "$STAGE/"

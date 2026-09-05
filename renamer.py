@@ -244,7 +244,7 @@ def friendly_error(err: BaseException, path: Path) -> str:
                 "up in the folder just now." % name)
     if isinstance(err, PermissionError):
         return ("%s could not be renamed because macOS denied permission. "
-                "The file may be locked, or File Renamer may need access "
+                "The file may be locked, or Aliasx may need access "
                 "to that folder in System Settings › Privacy & "
                 "Security › Files and Folders." % name)
     if isinstance(err, OSError):
@@ -294,7 +294,7 @@ def _needs_two_phase(plan: Sequence) -> bool:
 
 def _temp_path(folder: Path) -> Path:
     for _ in range(10000):
-        cand = folder / (".filerenamer-%s.tmp" % random_name(12))
+        cand = folder / (".aliasx-%s.tmp" % random_name(12))
         if not cand.exists():
             return cand
     raise OSError(errno.EEXIST, "no free temporary name")

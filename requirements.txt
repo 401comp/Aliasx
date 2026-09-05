@@ -1,4 +1,4 @@
-# File Renamer — modern macOS (11+) build.
+# Aliasx — modern macOS (11+) build.
 # The app itself needs nothing but the standard library; Pillow is for the
 # icon and PyInstaller for the .app bundle.
 Pillow>=10.0

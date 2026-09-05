@@ -1,6 +1,6 @@
 """User preferences — window state and the last-used rename settings.
 
-JSON at ~/Library/Application Support/File Renamer/prefs.json, kept apart
+JSON at ~/Library/Application Support/Aliasx/prefs.json, kept apart
 from the SQLite history so UI state can be reset without losing the undo
 record (or the other way round).
 """
@@ -11,6 +11,7 @@ import json
 import os
 from typing import Any, Dict
 
+import applog
 from database import app_dir
 
 
@@ -69,8 +70,8 @@ def save(prefs: Dict[str, Any]) -> None:
         temp = path.with_suffix(".tmp")
         temp.write_text(json.dumps(prefs, indent=2), encoding="utf-8")
         os.replace(str(temp), str(path))
-    except (OSError, TypeError, ValueError):
-        pass
+    except (OSError, TypeError, ValueError) as e:
+        applog.warning(f"prefs.save failed: {e}")
 
 
 def set_value(key: str, value: Any) -> None:
