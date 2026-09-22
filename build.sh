@@ -115,6 +115,10 @@ echo "==> Info.plist"
 # No NSRequiresAquaSystemAppearance — the app follows the system
 # Light/Dark setting, which is the whole point of the aqua ttk theme.
 
+echo "==> re-sign after Info.plist updates"
+codesign --force --deep --sign - "dist/$APP.app"
+codesign --verify --deep --strict "dist/$APP.app"
+
 echo "==> headless launch check (no window is shown)"
 "dist/$APP.app/Contents/MacOS/$APP" --version
 
@@ -144,8 +148,16 @@ echo "==> verify DMG"
 hdiutil verify "$DMG" >/dev/null && echo "DMG verified OK"
 ls -lh "$DMG"
 
+echo "==> app ZIP"
+APP_ZIP="release/${APP}-${VERSION}-macos.zip"
+rm -f "$APP_ZIP"
+ditto -c -k --sequesterRsrc --keepParent "dist/$APP.app" "$APP_ZIP"
+unzip -t "$APP_ZIP" >/dev/null && echo "ZIP verified OK"
+ls -lh "$APP_ZIP"
+
 echo
 echo "Done."
 echo "  App:       dist/$APP.app"
 echo "  Installer: $DMG"
+echo "  ZIP:       $APP_ZIP"
 echo "Nothing was launched — open the DMG yourself when you want to install."
