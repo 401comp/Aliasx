@@ -15,7 +15,7 @@ BUNDLE_ID="com.killpidone.aliasx"
 PY="venv/bin/python"
 
 # Find a usable non-conda Python 3.9+. Prefer python.org framework installer
-# (always includes _tkinter), fall back to Homebrew if present, then PATH.
+# (always includes _tkinter), then use a non-conda PATH Python.
 # Reject conda: its libffi/tcl/tk are @rpath-linked and py2app/PyInstaller
 # can't bundle them, so the built app crashes on launch.
 find_python() {
@@ -23,13 +23,6 @@ find_python() {
   # python.org framework installer
   for v in ${want_v:-3.14 3.13 3.12 3.11 3.10 3.9}; do
     cand="/Library/Frameworks/Python.framework/Versions/$v/bin/python$v"
-    [ -x "$cand" ] && echo "$cand" && return 0
-  done
-  # Homebrew (optional)
-  for v in ${want_v:-3.14 3.13 3.12 3.11 3.10}; do
-    cand="/usr/local/opt/python@$v/bin/python$v"
-    [ -x "$cand" ] && echo "$cand" && return 0
-    cand="/opt/homebrew/opt/python@$v/bin/python$v"
     [ -x "$cand" ] && echo "$cand" && return 0
   done
   # PATH — accept only if it isn't conda
@@ -57,7 +50,6 @@ case "$MACOS_VER" in
         BOOTSTRAP=$(find_python) || {
           echo "ERROR: no usable Python 3.9+ found."
           echo "       Install python.org 3.12 (https://www.python.org/downloads/macos/)"
-          echo "       or Homebrew python@3.14."
           exit 1
         } ;;
 esac
@@ -77,7 +69,7 @@ fi
 $PY -m pip install --quiet --upgrade pip
 $PY -m pip install --quiet -r "$REQS"
 $PY -c 'import tkinter' || {
-  echo "ERROR: this Python has no tkinter. On Homebrew: brew install python-tk@3.14"
+  echo "ERROR: this Python has no tkinter. Use a framework Python from python.org."
   exit 1
 }
 
@@ -122,15 +114,15 @@ codesign --verify --deep --strict "dist/$APP.app"
 echo "==> headless launch check (no window is shown)"
 "dist/$APP.app/Contents/MacOS/$APP" --version
 
-echo "==> portability (no Homebrew paths may leak into the bundle)"
+echo "==> portability (no external non-system library paths may leak into the bundle)"
 LEAKS=$(find "dist/$APP.app" \( -name '*.so' -o -name '*.dylib' -o -type f -perm -u+x \) -print0 2>/dev/null \
   | xargs -0 otool -L 2>/dev/null \
-  | grep -E '^\s+(/usr/local|/opt/homebrew)' | sort -u || true)
+  | awk '/^[[:space:]]+\// && $1 !~ "^/usr/lib/" && $1 !~ "^/System/Library/" {print $1}' | sort -u || true)
 if [ -n "$LEAKS" ]; then
   echo "WARNING: bundle references paths that a stock Mac will not have:"
   echo "$LEAKS"
 else
-  echo "no /usr/local or /opt/homebrew references — safe on a stock Mac"
+  echo "no external non-system library references — safe on a stock Mac"
 fi
 
 echo "==> DMG"

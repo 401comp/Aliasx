@@ -124,8 +124,8 @@ Produces `dist/Aliasx.app` and `release/Aliasx-1.0.0.dmg`
 compatibility check, the self-test, and a portability check before it
 packages anything, and it never launches the app.
 
-On modern macOS the script uses Homebrew's `python@3.14` plus
-`python-tk@3.14` — not the miniconda `python3` that sits on `PATH`.
+On modern macOS the script uses a framework Python from python.org — not the
+miniconda `python3` that may sit on `PATH`.
 
 ### Building for Catalina (10.15)
 
