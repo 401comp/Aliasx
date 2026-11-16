@@ -176,3 +176,8 @@ anything if it fails.
 ## Licence
 
 MIT — see `LICENSE.txt`.
+## Support
+
+Found a problem? [Report it on GitHub](https://github.com/401comp/Aliasx/issues/new?template=bug_report.md).
+Please include the app version and your macOS version, but never include private
+paths or sensitive files.
