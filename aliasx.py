@@ -36,6 +36,13 @@ import traceback
 from datetime import datetime
 from pathlib import Path
 
+# Keep the promised headless self-test truly isolated.  The normal imports
+# initialise the persistent logger, so waiting until main() would write a log
+# in the real user Library before selftest.py can set ALIASX_HOME.
+if "--selftest" in sys.argv:
+    import selftest
+    sys.exit(0 if selftest.run() else 1)
+
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
@@ -45,7 +52,7 @@ import prefs as prefs_module
 import renamer
 
 APP_NAME = "Aliasx"
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 try:
     from _build import BUILD          # written by build.sh on every build
 except Exception:
@@ -333,6 +340,8 @@ class RenamerApp:
         help_menu = tk.Menu(menubar, tearoff=0)
         help_menu.add_command(label="About %s" % APP_NAME,
                               command=self.show_about)
+        help_menu.add_command(label="Open Read Me",
+                              command=self.open_readme)
         help_menu.add_command(label="Where things are stored",
                               command=self.show_storage)
         help_menu.add_separator()
@@ -939,14 +948,15 @@ class RenamerApp:
 
     def _report(self, kind, outcome):
         verb = "renamed" if kind == "rename" else "put back"
+        noun = "Rename" if kind == "rename" else "Undo"
         count = len(outcome.done)
         if not outcome.failures:
             self.status_label.configure(style="Ok.TLabel")
-            self.status_var.set("%s %s." % (plural(count, "file"), verb))
+            self.status_var.set("%s files processed. Complete!" % count)
             return
         self.status_label.configure(style="Warn.TLabel")
-        self.status_var.set("%s %s, %s skipped."
-                            % (plural(count, "file"), verb,
+        self.status_var.set("%s finished — %s %s, %s skipped."
+                            % (noun, plural(count, "file"), verb,
                                plural(len(outcome.failures), "file")))
         lines = [msg for _path, msg in outcome.failures[:12]]
         if len(outcome.failures) > 12:
@@ -1094,6 +1104,18 @@ class RenamerApp:
             "files are not affected."
             % database.app_dir(), parent=self.root)
 
+    def open_readme(self):
+        """Open the user guide bundled with the app or beside the source."""
+        if getattr(sys, "frozen", False):
+            path = Path(getattr(sys, "_MEIPASS", "")) / "README.md"
+        else:
+            path = Path(__file__).resolve().with_name("README.md")
+        if not path.is_file():
+            self.warn("Read Me unavailable",
+                      "The Aliasx Read Me file could not be found.")
+            return
+        subprocess.run(["open", str(path)], check=False)
+
     def _open_log_console(self):
         ok, msg = applog.open_in_console()
         if not ok:
@@ -1210,9 +1232,6 @@ def main() -> int:
     if args.version:
         print("%s %s (build %s)" % (APP_NAME, VERSION, BUILD))
         return 0
-    if args.selftest:
-        import selftest
-        return 0 if selftest.run() else 1
     return run_gui()
 
 

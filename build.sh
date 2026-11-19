@@ -10,7 +10,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 APP="Aliasx"
-VERSION="1.0.0"
+VERSION="1.0.1"
 BUNDLE_ID="com.killpidone.aliasx"
 PY="venv/bin/python"
 
@@ -94,6 +94,7 @@ $PY -m PyInstaller --noconfirm --windowed --name "$APP" \
   --icon assets/icon.icns \
   --osx-bundle-identifier "$BUNDLE_ID" \
   --collect-all tkinterdnd2 \
+  --add-data "README.md:." \
   --hidden-import _build \
   aliasx.py
 
@@ -106,6 +107,12 @@ echo "==> Info.plist"
 /usr/libexec/PlistBuddy -c "Add :LSMinimumSystemVersion string '10.15'" "$PLIST"
 # No NSRequiresAquaSystemAppearance — the app follows the system
 # Light/Dark setting, which is the whole point of the aqua ttk theme.
+# PyInstaller signs its finished bundle, but the Info.plist edits above change
+# signed content. Re-sign the complete ad-hoc bundle so Finder and Gatekeeper
+# see a structurally valid application before it is archived.
+echo "==> re-sign app bundle"
+codesign --force --deep --sign - "dist/$APP.app"
+codesign --verify --deep --strict "dist/$APP.app"
 
 echo "==> re-sign after Info.plist updates"
 codesign --force --deep --sign - "dist/$APP.app"

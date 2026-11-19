@@ -302,11 +302,14 @@ def run() -> bool:
         os.environ["ALIASX_HOME"] = str(tmp / "support")
 
         sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import applog
         import database
         import prefs
         import renamer
 
         print("Aliasx self-test — %s\n" % tmp)
+        c.check("logs stay inside the isolated test storage",
+                applog.LOG_PATH.parent == tmp / "support" / "logs")
         test_names(c, renamer)
         test_plans(c, renamer, tmp)
         test_execution(c, renamer, tmp)

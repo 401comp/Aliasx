@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
 
-datas = []
+datas = [('README.md', '.')]
 binaries = []
 hiddenimports = ['_build']
 tmp_ret = collect_all('tkinterdnd2')

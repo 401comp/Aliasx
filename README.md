@@ -113,14 +113,17 @@ python3 aliasx.py
 
 Keyboard: ⌘O add files, ⌘⇧O add folder, ⌘R rename, ⌘Z undo.
 
+Use **Help → Open Read Me** in the app to open this guide.
+
 ## Build
 
 ```bash
 chmod +x build.sh && ./build.sh
 ```
 
-Produces `dist/Aliasx.app` and `release/Aliasx-1.0.0.dmg`
-(drag-install, with an `/Applications` shortcut). The build runs the
+Produces `dist/Aliasx.app`, `release/Aliasx-1.0.1.dmg`
+(drag-install, with an `/Applications` shortcut), and
+`release/Aliasx-1.0.1-macos.zip` (a portable app archive). The build runs the
 compatibility check, the self-test, and a portability check before it
 packages anything, and it never launches the app.
 

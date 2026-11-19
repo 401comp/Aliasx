@@ -1,10 +1,14 @@
-"""Persistent app log — written to ~/Library/Logs/Aliasx/ so entries also
-surface in macOS Console.app (which watches ~/Library/Logs by convention).
+"""Persistent app log.
+
+Normally this is written to ~/Library/Logs/Aliasx/ so entries also surface in
+macOS Console.app.  Test and automation runs can set ALIASX_HOME (or the more
+specific ALIASX_LOG_DIR) to keep every Aliasx side effect in their sandbox.
 """
 from __future__ import annotations
 
 import logging
 import logging.handlers
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -13,7 +17,16 @@ APP_NAME = "Aliasx"
 
 
 def _log_dir() -> Path:
-    base = Path.home() / "Library" / "Logs" / APP_NAME
+    override = os.environ.get("ALIASX_LOG_DIR")
+    if override:
+        base = Path(override)
+    elif os.environ.get("ALIASX_HOME"):
+        # ALIASX_HOME is the application's established isolated-storage
+        # switch.  Keep logs alongside it rather than touching the real user
+        # Library during a self-test or an automated build.
+        base = Path(os.environ["ALIASX_HOME"]) / "logs"
+    else:
+        base = Path.home() / "Library" / "Logs" / APP_NAME
     base.mkdir(parents=True, exist_ok=True)
     return base
 
@@ -25,9 +38,14 @@ _logger = logging.getLogger(APP_NAME)
 _logger.setLevel(logging.INFO)
 
 if not _logger.handlers:
-    _handler = logging.handlers.RotatingFileHandler(
-        LOG_PATH, maxBytes=2_000_000, backupCount=3,
-    )
+    try:
+        _handler = logging.handlers.RotatingFileHandler(
+            LOG_PATH, maxBytes=2_000_000, backupCount=3,
+        )
+    except OSError:
+        # Logging is diagnostic only.  A protected, unavailable, or full
+        # Library folder must never stop the renamer from opening.
+        _handler = logging.StreamHandler()
     _handler.setFormatter(logging.Formatter(
         "%(asctime)s [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S",
     ))

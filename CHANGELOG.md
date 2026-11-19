@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.1 — 2026-11-19
+
+- Rename and undo now finish with one plain status line: “N files processed.
+  Complete!”
+- Help now opens the bundled Read Me guide.
+- Self-tests isolate logs along with history and preferences; an unavailable
+  log folder can no longer stop Aliasx from opening.
+- Release builds now create a verified macOS ZIP and re-sign the bundle after
+  metadata changes.
+
 ## 1.0.0 — 2026-07-30
 
 First packaged release. Rebuilt from the original single-file
